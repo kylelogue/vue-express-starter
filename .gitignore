@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Vite/Vue specific
+.vite/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker volumes (for persistent data)
+database-data/
+mariadb-data/
+
+# Temporary files
+.tmp/
+temp/

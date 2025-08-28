@@ -1,0 +1,105 @@
+services:
+  database:
+    image: mariadb:11
+    container_name: app-database
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-starter}
+      MYSQL_USER: ${DB_USER:-starter_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - database_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: ${NODE_ENV}
+    container_name: app-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - SERVER_PORT=${SERVER_PORT}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      # Always mount source code (ignored in production)
+      - ./backend/src:/app/src:cached
+      - ./backend/package.json:/app/package.json:cached
+      - ./backend/package-lock.json:/app/package-lock.json:cached
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      - database
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: ${NODE_ENV}
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: app-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - VITE_API_URL=${VITE_API_URL}
+    ports:
+      # Expose Vite dev server port for mobile access (development only)
+      - "${VITE_DEV_PORT:-5173}:5173"
+    volumes:
+      # Always mount source code (ignored in production)
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/package.json:/app/package.json:cached
+      - ./frontend/package-lock.json:/app/package-lock.json:cached
+      - ./frontend/vite.config.ts:/app/vite.config.ts:cached
+      - ./frontend/index.html:/app/index.html:cached
+      - frontend_node_modules:/app/node_modules
+      # Production volume (built files shared with nginx)
+      - static_files:/var/www/html
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: ${NODE_ENV}
+    container_name: app-nginx
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV:-dev}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ssl_certs:/etc/nginx/ssl
+      - static_files:/var/www/html
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - app-network
+
+volumes:
+  database_data:
+  backend_node_modules:
+  frontend_node_modules:
+  ssl_certs:
+  static_files:
+
+networks:
+  app-network:
+    driver: bridge
