@@ -1,0 +1,5 @@
+[mysqld]
+# Enable TCP connections (required for Prisma Client)
+bind-address = 0.0.0.0
+skip-networking = 0
+port = 3306

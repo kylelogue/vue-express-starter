@@ -1,0 +1,92 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node modules (will be installed during build)
+node_modules
+**/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (SECURITY: Never include secrets in images)
+.env
+.env.*
+!.env.example
+
+# Development files
+*.md
+!README.md
+LICENSE
+
+# Docker files (not needed in container)
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+Dockerfile
+**/Dockerfile
+.dockerignore
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage
+*.test.js
+*.spec.js
+*.test.ts
+*.spec.ts
+**/__tests__
+
+# Build artifacts (will be rebuilt)
+dist
+build
+.cache
+
+# Frontend development
+frontend/.vite
+frontend/dist
+frontend/node_modules
+
+# Backend development
+backend/dist
+backend/node_modules
+
+# Nginx
+nginx/nginx.development.conf
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# SSL certificates (not needed - App Platform handles SSL)
+ssl_certs/
+certbot/
+*.pem
+*.crt
+*.key
+
+# Database files (will be created fresh)
+*.sql
+!database/init.sql
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude/AI artifacts
+.claude/

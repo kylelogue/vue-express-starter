@@ -1,0 +1,40 @@
+# Development overrides - automatically loaded when running `docker compose up`
+# This file contains development-specific configuration
+
+services:
+  backend:
+    volumes:
+      # Hot reload: mount source code
+      - ./backend/src:/app/src:cached
+      - ./backend/prisma:/app/prisma:cached
+      - ./backend/package.json:/app/package.json:cached
+      - ./backend/package-lock.json:/app/package-lock.json:cached
+      - backend_node_modules:/app/node_modules
+
+  frontend:
+    ports:
+      # Expose Vite dev server port for mobile/network access (development only)
+      - "${VITE_DEV_PORT:-5173}:5173"
+    volumes:
+      # Hot reload: mount source code
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/package.json:/app/package.json:cached
+      - ./frontend/package-lock.json:/app/package-lock.json:cached
+      - ./frontend/vite.config.ts:/app/vite.config.ts:cached
+      - ./frontend/index.html:/app/index.html:cached
+      - ./frontend/tsconfig.json:/app/tsconfig.json:cached
+      - ./frontend/tsconfig.app.json:/app/tsconfig.app.json:cached
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:cached
+      - frontend_node_modules:/app/node_modules
+      # Production volume (built files shared with nginx)
+      - static_files:/var/www/html
+
+  nginx:
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      # HTTPS disabled in development by default
+      # - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ssl_certs:/etc/nginx/ssl
+      - static_files:/var/www/html

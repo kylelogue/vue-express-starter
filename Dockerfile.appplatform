@@ -1,0 +1,161 @@
+# Multi-stage Dockerfile for Digital Ocean App Platform
+# Combines backend, frontend, database, and nginx in a single container
+# Optimized for cost-effective deployment at ~$5-12/month
+
+# ============================================================================
+# Stage 1: Build Backend
+# ============================================================================
+FROM node:20.19.0-alpine AS backend-builder
+
+# Suppress npm update notifier and Prisma warnings
+ENV npm_config_update_notifier=false \
+    PRISMA_HIDE_PREVIEW_FLAG_WARNINGS=true \
+    PRISMA_HIDE_UPDATE_MESSAGE=true
+
+WORKDIR /app/backend
+
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
+# Copy backend package files
+COPY backend/package*.json ./
+
+# Install ALL dependencies (including dev dependencies like @types/node for TypeScript build)
+# Note: Do NOT set NODE_ENV=production here, as it would skip dev dependencies
+# Use flags to optimize installation speed
+RUN npm ci --no-audit --no-fund && \
+  npm cache clean --force
+
+# Copy backend source
+COPY backend/prisma ./prisma
+COPY backend/src ./src
+COPY backend/tsconfig.json ./
+
+# Generate Prisma Client
+RUN npx prisma generate --no-hints
+
+# Build TypeScript
+RUN npm run build
+
+# ============================================================================
+# Stage 2: Build Frontend
+# ============================================================================
+FROM node:20.19.0-alpine AS frontend-builder
+
+# Suppress npm update notifier
+ENV npm_config_update_notifier=false
+
+WORKDIR /app/frontend
+
+# Copy frontend package files first for better layer caching
+COPY frontend/package*.json ./
+
+# Install dependencies with optimization flags
+RUN npm ci --no-audit --no-fund && \
+  npm cache clean --force
+
+# Copy frontend source (separate layer for better caching)
+COPY frontend/ ./
+
+# Build frontend (outputs to /app/frontend/dist)
+RUN npm run build
+
+# ============================================================================
+# Stage 3: Production Runtime
+# ============================================================================
+FROM node:20.19.0-alpine
+
+# Set production environment
+ENV NODE_ENV=production \
+    npm_config_update_notifier=false \
+    PRISMA_HIDE_PREVIEW_FLAG_WARNINGS=true \
+    PRISMA_HIDE_UPDATE_MESSAGE=true \
+    PRISMA_DISABLE_WARNINGS=true
+
+# Install runtime dependencies in a single layer
+RUN apk add --no-cache \
+  nginx \
+  mariadb \
+  mariadb-client \
+  openssl \
+  bash \
+  curl
+
+# Create application directory
+WORKDIR /app
+
+# ============================================================================
+# Setup MariaDB
+# ============================================================================
+RUN mkdir -p /run/mysqld && \
+  chown -R mysql:mysql /run/mysqld && \
+  chown -R mysql:mysql /var/lib/mysql
+
+# Copy MariaDB configuration to enable TCP connections
+COPY mariadb-server.cnf /etc/my.cnf.d/
+
+# Copy database initialization script
+COPY database/init.sql /docker-entrypoint-initdb.d/
+
+# ============================================================================
+# Setup Backend
+# ============================================================================
+WORKDIR /app/backend
+
+# Copy package files first
+COPY backend/package*.json ./
+
+# Install ONLY production dependencies (excludes TypeScript, @types/*, etc.)
+RUN npm ci --omit=dev --no-audit --no-fund && \
+  npm cache clean --force
+
+# Copy built files from builder
+COPY --from=backend-builder /app/backend/dist ./dist
+
+# Copy Prisma files for migrations and seeding
+COPY backend/prisma ./prisma
+
+# Generate Prisma Client in production node_modules
+# This ensures the Prisma Client matches the production environment
+RUN npx prisma generate --no-hints
+
+# ============================================================================
+# Setup Frontend
+# ============================================================================
+WORKDIR /app/frontend
+
+# Copy built frontend files from builder
+COPY --from=frontend-builder /app/frontend/dist /var/www/html
+
+# ============================================================================
+# Setup Nginx
+# ============================================================================
+# Copy nginx configuration
+COPY nginx/nginx.appplatform.conf /etc/nginx/http.d/default.conf
+
+# Remove default nginx config if it exists
+RUN rm -f /etc/nginx/http.d/default.conf.default
+
+# Create nginx cache and logs directories
+RUN mkdir -p /var/cache/nginx /var/log/nginx && \
+  chown -R nginx:nginx /var/cache/nginx /var/log/nginx
+
+# ============================================================================
+# Setup Entrypoint
+# ============================================================================
+WORKDIR /app
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Expose port (App Platform expects single port)
+# Nginx will listen on this port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8080/api/health || exit 1
+
+# Run entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

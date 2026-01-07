@@ -36,8 +36,9 @@ This starter provides the best of both worlds:
 
 ### Database (MariaDB)
 - **MariaDB 11** - High-performance MySQL-compatible database
+- **Prisma 6.0** - Latest version with improved type safety and performance
 - **Prisma Migrations** - Version-controlled database schema changes
-- **Database Seeding** - Sample data for development
+- **Database Seeding** - Sample data for development with TypeScript
 
 ### Infrastructure (Docker)
 - **Docker Compose** - Complete containerized development environment
@@ -48,7 +49,7 @@ This starter provides the best of both worlds:
 
 ## 📋 Prerequisites
 
-- **Node.js** 18.0.0 or higher
+- **Node.js** 20.19.0 or higher
 - **Docker** 20.0.0 or higher
 - **Docker Compose** 2.0.0 or higher
 
@@ -76,22 +77,30 @@ This starter provides the best of both worlds:
    - Frontend: http://localhost
    - API: http://localhost/health
 
-### For Production Deployment
+### For Production Deployment (Digital Ocean App Platform)
 
-1. **Clone on your server**
+This template includes a production-ready deployment configuration for Digital Ocean App Platform:
+
+1. **Push to GitHub**
    ```bash
-   git clone <your-repo-url> my-project
-   cd my-project
-   cp .env.example .env
-   # Edit .env with production values
+   git push origin main
    ```
 
-2. **Deploy**
-   ```bash
-   NODE_ENV=production npm run build
-   npm run db:deploy
-   NODE_ENV=production npm run dev
-   ```
+2. **Create App on Digital Ocean**
+   - Go to App Platform in Digital Ocean console
+   - Select your GitHub repository
+   - App Platform will automatically detect the configuration
+
+3. **Set Environment Variables** (in DO Console > Settings > Environment Variables):
+   - Set all variables at **APP LEVEL** (not service level)
+   - Required variables: `DB_NAME`, `DB_USER`, `DB_URL`, `VITE_API_URL`, `SERVER_PORT`, `CORS_ORIGIN`, `JWT_SECRET`, `SEED_DATABASE`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
+   - See [.do/app.yaml](.do/app.yaml) for full list and details
+
+4. **Deploy**
+   - App Platform automatically builds and deploys on push to main branch
+   - Cost: Starting at $5/month for basic-xxs instance
+
+See the [Deployment](#-deployment-guide) section for detailed instructions.
 
 ## 🛠️ Development Workflow
 
@@ -305,45 +314,159 @@ Each feature module contains:
 - **Production**: Error and warning logs only
 - **Docker Logs**: `npm run logs` for aggregated service logs
 
-## 🚀 Production Deployment Details
+## 🚀 Deployment Guide
 
-### Environment Variables
-Update your `.env` file with production values:
+### Digital Ocean App Platform (Recommended - $5-12/month)
+
+The easiest way to deploy this starter template is using Digital Ocean App Platform. This method combines backend, frontend, and database in a single cost-effective container.
+
+#### Prerequisites
+- Digital Ocean account
+- GitHub repository with your code
+- Domain name (optional)
+
+#### Step-by-Step Deployment
+
+1. **Prepare Your Repository**
+   ```bash
+   # Update .do/app.yaml with your repository details
+   # Change: github.repo: "YOUR_GITHUB_USERNAME/YOUR_REPO_NAME"
+
+   git add .
+   git commit -m "Configure for App Platform deployment"
+   git push origin main
+   ```
+
+2. **Create App on Digital Ocean**
+   - Log into [Digital Ocean Console](https://cloud.digitalocean.com/apps)
+   - Click "Create App"
+   - Select "GitHub" as source
+   - Choose your repository and branch (main)
+   - App Platform will detect `.do/app.yaml` automatically
+   - Click "Next" through the review screens
+
+3. **Configure Environment Variables (CRITICAL - Read Carefully)**
+
+   ⚠️ **IMPORTANT: .env files are NOT used on App Platform - ALL variables must be set in DO Console UI**
+
+   ⚠️ **Based on production deployment experience, follow these steps EXACTLY:**
+
+   **Step 1: Navigate to APP-Level Environment Variables**
+   - Go to: Settings > Environment Variables (the main section, NOT service-specific)
+   - This is at the top of the Settings page
+   - **Do NOT add variables under any service-specific sections**
+
+   **Step 2: Add ALL Required Variables in DO Console UI**
+
+   Copy these exact variable names and values:
+
+   ```
+   CORS_ORIGIN = https://yourapp.ondigitalocean.app
+   VITE_API_URL = /api
+   DB_NAME = starter
+   DB_USER = starter_user
+   DB_PASSWORD = ********** [CHECK "Encrypt"]
+   DB_ROOT_PASSWORD = ********** [CHECK "Encrypt"]
+   SERVER_PORT = 3001
+   JWT_SECRET = ********** [CHECK "Encrypt", 32+ chars]
+   ADMIN_EMAIL = ********** [CHECK "Encrypt"]
+   ADMIN_PASSWORD = ********** [CHECK "Encrypt"]
+   SEED_DATABASE = true
+   ```
+
+   **Step 3: Mark Sensitive Variables as Encrypted**
+
+   Check the "Encrypt" checkbox for these variables:
+   - `DB_PASSWORD`
+   - `DB_ROOT_PASSWORD`
+   - `JWT_SECRET`
+   - `ADMIN_EMAIL` ⚠️ **MUST be encrypted**
+   - `ADMIN_PASSWORD` ⚠️ **MUST be encrypted**
+
+   **Step 4: Remove Service-Level Variables (CRITICAL)**
+   - Click on your "web" service in the left sidebar
+   - Go to Settings tab
+   - Scroll to Environment Variables section
+   - **DELETE any variables** found there (even if empty)
+   - Known Issue: Service-level vars override app-level vars
+
+   **Step 5: Variables NOT to Set**
+   - ❌ Do NOT set `DATABASE_URL` - it's auto-constructed in docker-entrypoint.sh
+   - ❌ Do NOT set `NODE_ENV` - it's set in Dockerfile
+   - ❌ Do NOT upload or use .env files (they don't work on App Platform)
+
+4. **Deploy**
+   - Click "Create Resources"
+   - Wait for build and deployment (5-10 minutes)
+   - Access your app at the provided URL
+
+5. **Test Deployment**
+   ```bash
+   # Check health
+   curl https://yourapp.ondigitalocean.app/api/health
+
+   # Login with your ADMIN_EMAIL and ADMIN_PASSWORD
+   ```
+
+#### ⚠️ Important: Ephemeral Storage Warning
+
+**Digital Ocean App Platform uses ephemeral storage:**
+- Database data is **LOST on every deployment**
+- All data is **recreated from migrations + seed** on startup
+- Keep `SEED_DATABASE=true` to recreate admin user on every deploy
+
+**For production with persistent data:**
+1. Add Digital Ocean Managed Database (~$15/month additional)
+2. Update `DATABASE_URL` to point to managed database
+3. Set `SEED_DATABASE=false` after initial deployment
+
+#### Cost Optimization
+
+| Instance Size | RAM | vCPU | Cost/Month | Use Case |
+|--------------|-----|------|------------|----------|
+| basic-xxs | 512 MB | 1 | $5 | Development/Testing |
+| basic-xs | 1 GB | 1 | $12 | Production (Recommended) |
+
+#### Automatic Deployments
+
+App Platform automatically redeploys when you push to main:
 ```bash
-NODE_ENV=production
-JWT_SECRET=your-secure-random-string-min-32-chars
-DATABASE_URL=mysql://user:password@host:port/database
-CORS_ORIGIN=https://your-domain.com
-HTTP_PORT=80
-HTTPS_PORT=443
+git add .
+git commit -m "Update feature"
+git push origin main  # Triggers automatic deployment
 ```
 
-### Deployment Commands
+---
+
+### Environment Variables Reference
+
+See [.env.example](.env.example) for all available environment variables with descriptions.
+
+**Critical Security Variables:**
+- `JWT_SECRET` - Minimum 32 characters, use a cryptographically secure random string
+- `DB_PASSWORD` - Use strong passwords for production
+- `ADMIN_PASSWORD` - Secure password for admin account
+
+**Generate Secure Secrets:**
 ```bash
-# Build optimized Docker images
-NODE_ENV=production npm run build
+# Generate JWT_SECRET (Linux/macOS)
+openssl rand -base64 32
 
-# Apply database migrations (safe for production)
-npm run db:deploy
-
-# Start production services
-NODE_ENV=production npm run dev
+# Generate passwords
+openssl rand -base64 24
 ```
 
-### How It Works
-- **Frontend**: Vue app builds to static files served by Nginx
-- **Backend**: TypeScript compiles to JavaScript, runs with Node.js
-- **Database**: Migrations ensure schema is up-to-date
-- **Nginx**: Handles SSL, static files, and API proxying
+---
 
 ### Production Checklist
-- [ ] Update JWT_SECRET to a secure random string
-- [ ] Configure production DATABASE_URL
-- [ ] Set up SSL certificates (Let's Encrypt recommended)
-- [ ] Update CORS_ORIGIN to your domain
-- [ ] Set up database backups
-- [ ] Configure monitoring and logging
-- [ ] Set up reverse proxy headers
+
+- [ ] Update `.do/app.yaml` with your GitHub repository
+- [ ] Set all environment variables in DO Console (APP LEVEL)
+- [ ] Use encrypted storage for secrets (JWT_SECRET, passwords)
+- [ ] Update CORS_ORIGIN to your production domain
+- [ ] Consider managed database for persistent data
+- [ ] Set up custom domain (optional)
+- [ ] Configure auto-scaling if needed (optional)
 
 ## 🧪 Testing
 
@@ -369,30 +492,12 @@ The template includes testing frameworks:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Support
-
-### Common Issues
-
-**Container won't start**:
-```bash
-npm run logs:[service]  # Check specific service logs
-npm run clean          # Clean and rebuild everything
-```
-
-**Database connection issues**:
-```bash
-npm run db:reset       # Reset database completely
-npm run health         # Check system health
-```
-
-**Port conflicts**:
-- Check if ports 80, 5173, 3306 are available
-- Modify ports in `.env` if needed
 
 ### Getting Help
 - Check the logs: `npm run logs`
 - Inspect container status: `docker compose ps`
 - Access container shells: `npm run shell:backend` or `npm run shell:frontend`
+- App Platform logs: Digital Ocean Console > Apps > Your App > Runtime Logs
 
 ---
 

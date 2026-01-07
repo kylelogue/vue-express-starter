@@ -1,3 +1,7 @@
+# Base configuration - shared between development and production
+# Development overrides are in docker-compose.override.yml (auto-loaded)
+# Production overrides can be specified with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+
 services:
   database:
     image: mariadb:11
@@ -9,10 +13,12 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-password}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
     ports:
-      - "3306:3306"
+      # SECURITY: Bind to localhost only (not accessible from external network)
+      - "127.0.0.1:3306:3306"
     volumes:
       - database_data:/var/lib/mysql
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./mariadb-server.cnf:/etc/mysql/mariadb.conf.d/99-custom.cnf
     networks:
       - app-network
 
@@ -20,21 +26,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: ${NODE_ENV}
+      target: development  # Default to development
     container_name: app-backend
     restart: unless-stopped
     environment:
-      - NODE_ENV=${NODE_ENV}
-      - SERVER_PORT=${SERVER_PORT}
+      - NODE_ENV=${NODE_ENV:-development}
+      - SERVER_PORT=${SERVER_PORT:-3001}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
-    volumes:
-      # Always mount source code (ignored in production)
-      - ./backend/src:/app/src:cached
-      - ./backend/package.json:/app/package.json:cached
-      - ./backend/package-lock.json:/app/package-lock.json:cached
-      - backend_node_modules:/app/node_modules
     depends_on:
       - database
     networks:
@@ -44,28 +44,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: ${NODE_ENV}
+      target: development  # Default to development
       args:
-        VITE_API_URL: ${VITE_API_URL}
+        VITE_API_URL: ${VITE_API_URL:-/api}
     container_name: app-frontend
     restart: unless-stopped
     environment:
-      - NODE_ENV=${NODE_ENV}
-      - VITE_API_URL=${VITE_API_URL}
-    ports:
-      # Expose Vite dev server port for mobile access (development only)
-      - "${VITE_DEV_PORT:-5173}:5173"
-    volumes:
-      # Always mount source code (ignored in production)
-      - ./frontend/src:/app/src:cached
-      - ./frontend/public:/app/public:cached
-      - ./frontend/package.json:/app/package.json:cached
-      - ./frontend/package-lock.json:/app/package-lock.json:cached
-      - ./frontend/vite.config.ts:/app/vite.config.ts:cached
-      - ./frontend/index.html:/app/index.html:cached
-      - frontend_node_modules:/app/node_modules
-      # Production volume (built files shared with nginx)
-      - static_files:/var/www/html
+      - NODE_ENV=${NODE_ENV:-development}
+      - VITE_API_URL=${VITE_API_URL:-/api}
     depends_on:
       - backend
     networks:
@@ -76,17 +62,11 @@ services:
       context: ./nginx
       dockerfile: Dockerfile
       args:
-        NODE_ENV: ${NODE_ENV}
+        NODE_ENV: ${NODE_ENV:-development}
     container_name: app-nginx
     restart: unless-stopped
     environment:
-      - NODE_ENV=${NODE_ENV:-dev}
-    ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-    volumes:
-      - ssl_certs:/etc/nginx/ssl
-      - static_files:/var/www/html
+      - NODE_ENV=${NODE_ENV:-development}
     depends_on:
       - frontend
       - backend
